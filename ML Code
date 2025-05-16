@@ -1,0 +1,173 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVR
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+from tabulate import tabulate  # For creating nice tables
+
+# Loading the data
+df = pd.read_csv('https://raw.githubusercontent.com/harshdev19/150uF/refs/heads/main/cuk_converter_capacitor_degradation_with_hours.csv')
+
+# Display some basic information about the dataset
+print("Dataset Overview:")
+print(f"Number of samples: {len(df)}")
+print(f"Columns: {', '.join(df.columns)}")
+
+# Create a tabular dataset of 8 entries for Hours of Working vs ESR and Capacitance
+# Sort by Hours of Working to get data points from across the lifespan
+sorted_df = df.sort_values(by='Hours of Working')
+
+# Get 8 evenly distributed samples from the dataset
+step = len(sorted_df) // 8
+selected_indices = [i * step for i in range(8)]
+selected_data = sorted_df.iloc[selected_indices].copy()
+
+# Create a table with percentage changes
+# Calculate percentage changes relative to the first entry
+base_esr = selected_data.iloc[0]['ESR (Ohms)']
+base_capacitance = selected_data.iloc[0]['Capacitance (uF)']
+
+# Calculate percentage changes
+selected_data['ESR % Increase'] = ((selected_data['ESR (Ohms)'] - base_esr) / base_esr) * 100
+selected_data['Capacitance % Decrease'] = ((base_capacitance - selected_data['Capacitance (uF)']) / base_capacitance) * 100
+
+# Format the table for display
+table_data = selected_data[['Hours of Working', 'ESR (Ohms)', 'ESR % Increase',
+                            'Capacitance (uF)', 'Capacitance % Decrease']]
+
+# Round percentage values for better readability
+table_data['ESR % Increase'] = table_data['ESR % Increase'].round(2)
+table_data['Capacitance % Decrease'] = table_data['Capacitance % Decrease'].round(2)
+
+# Display the comprehensive table
+print("\nCapacitor Degradation Analysis (8 selected entries):")
+print(tabulate(table_data, headers='keys', tablefmt='pretty', showindex=False))
+
+# Create separate tables for Hours of Working vs ESR and Hours of Working vs Capacitance
+# with their respective percentage changes
+hours_vs_esr = selected_data[['Hours of Working', 'ESR (Ohms)', 'ESR % Increase']]
+print("\nHours of Working vs ESR with % Increase (8 selected entries):")
+print(tabulate(hours_vs_esr, headers='keys', tablefmt='pretty', showindex=False))
+
+hours_vs_capacitance = selected_data[['Hours of Working', 'Capacitance (uF)', 'Capacitance % Decrease']]
+print("\nHours of Working vs Capacitance with % Decrease (8 selected entries):")
+print(tabulate(hours_vs_capacitance, headers='keys', tablefmt='pretty', showindex=False))
+
+# Visualize the relationships with percentages
+plt.figure(figsize=(15, 10))
+
+# Plot for Hours of Working vs ESR
+plt.subplot(2, 2, 1)
+plt.scatter(selected_data['Hours of Working'], selected_data['ESR (Ohms)'], color='red', marker='o', s=100)
+plt.xlabel('Hours of Working')
+plt.ylabel('ESR (Ohms)')
+plt.title('Hours of Working vs ESR')
+plt.grid(True)
+
+# Plot for Hours of Working vs ESR % Increase
+plt.subplot(2, 2, 2)
+plt.scatter(selected_data['Hours of Working'], selected_data['ESR % Increase'], color='darkred', marker='o', s=100)
+plt.xlabel('Hours of Working')
+plt.ylabel('ESR % Increase')
+plt.title('Hours of Working vs ESR % Increase')
+plt.grid(True)
+
+# Plot for Hours of Working vs Capacitance
+plt.subplot(2, 2, 3)
+plt.scatter(selected_data['Hours of Working'], selected_data['Capacitance (uF)'], color='blue', marker='o', s=100)
+plt.xlabel('Hours of Working')
+plt.ylabel('Capacitance (uF)')
+plt.title('Hours of Working vs Capacitance')
+plt.grid(True)
+
+# Plot for Hours of Working vs Capacitance % Decrease
+plt.subplot(2, 2, 4)
+plt.scatter(selected_data['Hours of Working'], selected_data['Capacitance % Decrease'], color='darkblue', marker='o', s=100)
+plt.xlabel('Hours of Working')
+plt.ylabel('Capacitance % Decrease')
+plt.title('Hours of Working vs Capacitance % Decrease')
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+# Continue with the ML modeling part
+X = df[['Input Voltage (V)', 'Output Voltage (V)', 'Capacitance (uF)', 'Temperature (C)','Hours of Working']]
+y = df['ESR (Ohms)']
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Create and train the Linear Regression model
+linear_model = LinearRegression()
+linear_model.fit(X_train, y_train)
+
+# Make predictions with Linear Regression
+y_pred_linear = linear_model.predict(X_test)
+
+# Evaluate Linear Regression
+mse_linear = mean_squared_error(y_test, y_pred_linear)
+r2_linear = r2_score(y_test, y_pred_linear)
+
+# Create and train the SVM model
+svm_model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+svm_model.fit(X_train, y_train)
+
+# Make predictions with SVM
+y_pred_svm = svm_model.predict(X_test)
+
+# Evaluate SVM
+mse_svm = mean_squared_error(y_test, y_pred_svm)
+r2_svm = r2_score(y_test, y_pred_svm)
+
+# Create model performance comparison table
+model_comparison = {
+    'Model': ['Linear Regression', 'SVM'],
+    'MSE': [round(mse_linear, 4), round(mse_svm, 4)],
+    'R2 Score': [round(r2_linear, 4), round(r2_svm, 4)]
+}
+
+performance_df = pd.DataFrame(model_comparison)
+print("\nModel Performance Comparison:")
+print(tabulate(performance_df, headers='keys', tablefmt='pretty', showindex=False))
+
+# Determine which model is better
+print("\nModel Comparison Results:")
+if mse_linear < mse_svm:
+    best_mse_model = "Linear Regression"
+else:
+    best_mse_model = "Support Vector Machine"
+
+if r2_linear > r2_svm:
+    best_r2_model = "Linear Regression"
+else:
+    best_r2_model = "Support Vector Machine"
+
+comparison_results = {
+    'Metric': ['Mean Squared Error', 'R² Score'],
+    'Better Model': [best_mse_model, best_r2_model]
+}
+
+print(tabulate(pd.DataFrame(comparison_results), headers='keys', tablefmt='pretty', showindex=False))
+# Plot a focused graph showing Hours of Working vs Capacitance % Decrease
+plt.figure(figsize=(10, 6))
+plt.plot(selected_data['Hours of Working'], selected_data['Capacitance % Decrease'],
+         color='darkblue', marker='o', markersize=8, linestyle='-', linewidth=2)
+plt.xlabel('Hours of Working', fontsize=12)
+plt.ylabel('Capacitance % Decrease', fontsize=12)
+plt.title('Capacitor Degradation: Hours of Working vs Capacitance % Decrease', fontsize=14)
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# Add data point labels for clarity
+for x, y in zip(selected_data['Hours of Working'], selected_data['Capacitance % Decrease']):
+    plt.annotate(f"{y:.2f}%",
+                 (x, y),
+                 textcoords="offset points",
+                 xytext=(0, 10),
+                 ha='center',
+                 fontsize=9)
+
+plt.tight_layout()
+plt.show()
